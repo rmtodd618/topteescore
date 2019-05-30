@@ -1,0 +1,16 @@
+version: 0.2
+phases:
+  install:
+    commands:
+       - apt-get -y update
+       - npm install -g serverless@1.25.0
+       - npm install
+  build:
+    commands:
+       - npm test
+       - serverless deploy --stage $BRANCH
+  post_build:
+    commands:
+cache:
+  paths:
+    - 'node_modules/**/*'

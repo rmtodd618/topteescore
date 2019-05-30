@@ -11,7 +11,40 @@ service: score # NOTE: update this with your service name
 provider:
   name: aws
   runtime: nodejs10.x
-
+resources:
+  Description: "Stroke tracker for stage >> ${opt:stage}"
+  Resources:
+    StrokeRecorderBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: golf-strokes
+    ScoreCard:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: "name"
+            AttributeType: "S"
+          - AttributeName: "serialNumber"
+            AttributeType: "S"
+        KeySchema:
+          - AttributeName: "name"
+            KeyType: "HASH"
+        ProvisionedThroughput:
+           ReadCapacityUnits: 1
+           WriteCapacityUnits: 1
+        TableName: score_card
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
+        GlobalSecondaryIndexes:
+          - IndexName: "serialnumber-index"
+            KeySchema:
+              - AttributeName: "serialNumber"
+                KeyType: "HASH"
+            Projection:
+              ProjectionType: KEYS_ONLY
+            ProvisionedThroughput:
+              ReadCapacityUnits: 1
+              WriteCapacityUnits: 1
 # you can overwrite defaults here
 #  stage: dev
 #  region: us-east-1
@@ -45,14 +78,11 @@ provider:
 #    - exclude-me.js
 #    - exclude-me-dir/**
 
-
-  IotButtonHandler:
-    handler: Elixir.AwsIotButton:handle_event
-    environment:
-      USERS_TABLE:
-        Ref: "UserProfiles"
-      SLACK_WORKSPACES_TABLE:
-        Ref: "ConnectedWorkspaces"
+functions:
+  Iot:
+    handler: app/iot/iot.handler
+    description: Handles the clicks fo the buttom
+    timeout: 60
     events:
       - iot:
           sql: "SELECT * FROM '${file(.local-keys.yaml):AWS_IOT_BUTTON_TOPIC}'"

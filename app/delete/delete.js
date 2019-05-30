@@ -1,7 +1,7 @@
 
 var AWS = require("aws-sdk");
 
-var docClient = new AWS.DynamoDB.DocumentClient();
+const dynamodb = new AWS.DynamoDB({apiVersion: '2012-08-10'});
 
 
 
@@ -10,15 +10,20 @@ exports.handler = (event, context, callback) => {
     var serialNumber = event;
     var params = {
         RequestItems: {
-            DeleteRequest:{
-                Key:{
-                    "serialNumber" : event
-                }
-        },
-        TableName: 'strokes',
-    }};
+            'strokes':[
+                {
+                  DeleteRequest: {
+                    Key: {
+                      'serialNumber' : {
+                        S: event
+                        }
+                    }
+                  }
+            }]
+        }
+    };
 console.log("Attempting a conditional delete...",serialNumber);
-docClient.batchWrite(params, function(err, data) {
+dynamodb.batchWriteItem(params, function(err, data) {
     if (err) {
         console.error("Unable to delete item. Error JSON:", JSON.stringify(err, null, 2));
     } else {
