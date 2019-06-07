@@ -1,21 +1,24 @@
 
 
 service: score # NOTE: update this with your service name
-#app: your-app-name
-#tenant: your-tenant-name
-
-# You can pin your service to only deploy with a specific Serverless version
-# Check out our docs for more details
-# frameworkVersion: "=X.X.X"
-
+tenant: rmtodd618
+app: strokes
 provider:
   name: aws
-  runtime: nodejs10.x
+  runtime: nodejs8.10
   memorySize: 512
+  environment:
+    SCORE_CARD_TABLE: "score_card"
+    STROKES_BUCKET: "golf-strokes-recorded"
   iamRoleStatements:
   - Effect: Allow
     Action:
-      - s3:*
+      - sqs:*
+    Resource: arn:aws:sqs:*:*
+  - Effect: Allow
+    Action:
+      - "s3:ListBucket"
+      - "s3:PutBucket"
     Resource: "*"
   - Effect: Allow
     Action:
@@ -23,16 +26,33 @@ provider:
     Resource: arn:aws:lambda:*:*:function:*
   - Effect: Allow
     Action:
-      - dynamodb:*
+      - dynamodb:DescribeTable
+      - dynamodb:Query
+      - dynamodb:Scan
+      - dynamodb:GetItem
+      - dynamodb:PutItem
+      - dynamodb:UpdateItem
+      - dynamodb:DeleteItem
     Resource: arn:aws:dynamodb:*:*
   region: us-east-1
 resources:
-  Description: "Stroke tracker for stage >> ${opt:stage}"
+  Description: "Stroke tracker for stage "
   Resources:
+    LAMBDAFAILURE:
+      Type: AWS::SQS::Queue
+      Properties:
+        RedrivePolicy:
+          deadLetterTargetArn:
+            Fn::GetAtt:
+              - "LambdaFailureQueue"
+              - "Arn"
+          maxReceiveCount: 2
+    LambdaFailureQueue:
+      Type: "AWS::SQS::Queue"
     StrokeRecorderBucket:
       Type: AWS::S3::Bucket
       Properties:
-        BucketName: golf-strokes
+        BucketName: golf-strokes-recorded
     ScoreCard:
       Type: "AWS::DynamoDB::Table"
       Properties:
@@ -68,9 +88,19 @@ functions:
   Iot:
     handler: app/iot/iot.handler
     description: Handles the clicks fo the buttom
+    onError: {
+          "Fn::GetAtt": ["LambdaFailureQueue", "Arn"]
+        }
     timeout: 60
-    events:
-      - iot:
-          sql: "SELECT * FROM '${file(.local-keys.yaml):AWS_IOT_BUTTON_TOPIC}'"
-          enabled: true
+    # events:
+    #   - iot:
+    #       sql: "SELECT * FROM '${file(.local-keys.yaml):AWS_IOT_BUTTON_TOPIC}'"
+    #       enabled: true
 
+plugins:
+  - serverless-s3-remover
+
+custom:
+  remover:
+     buckets:
+      -StrokeRecorderBucket
