@@ -1,6 +1,6 @@
 function ClicksAdded (serialNumber){
     s3.listObjects({
-    Bucket: 'golf-strokes-recorded',
+    Bucket: 'golf-strokes',
     Marker: serialNumber + '/'
 }, function(err, data) {
     if (err) {

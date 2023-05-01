@@ -3,14 +3,12 @@ var AWS = require("aws-sdk");
 
 var s3Client = new AWS.S3();
 
-
-
 exports.handler = (event, context, callback) => {
     console.log("events :", event)
     var serialNumber = event.deviceInfo.deviceId;
     var date = event.deviceEvent.buttonClicked.reportedTime;
     var params = {
-        Bucket: 'golf-strokes-recorded',
+        Bucket: 'golf-strokes',
         Key: serialNumber + '/'+ date,
         Body: 'fail',
         ACL: 'public-read',

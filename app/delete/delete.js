@@ -3,8 +3,6 @@ var AWS = require("aws-sdk");
 
 const dynamodb = new AWS.DynamoDB({apiVersion: '2012-08-10'});
 
-
-
 exports.handler = (event, context, callback) => {
     console.log("events :", event)
     var serialNumber = event;

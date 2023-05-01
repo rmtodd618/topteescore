@@ -1,23 +1,28 @@
 'use strict';
 
 const AWS = require('aws-sdk');
+AWS.config.update({
+    accessKeyId: 'your_access_key_id',
+    secretAccessKey: 'your_secret_access_key',
+    region: 'your_region'
+});
+const SNS = new AWS.SNS();
+const dynamodb = new AWS.DynamoDB();
+const lambda = new AWS.Lambda();
+const s3 = new AWS.S3();
 
-const SNS = new AWS.SNS({ apiVersion: '2010-03-31' });
-const dynamodb = new AWS.DynamoDB({apiVersion: '2012-08-10'});
-const lambda = new AWS.Lambda;
-var s3 = new AWS.S3();
 exports.handler = (event, context, callback) => {
     console.log('Received event:', event.deviceEvent.buttonClicked.clickType);
-    var clicktype = event.deviceEvent.buttonClicked.clickType;
-    var attributes = event.deviceInfo.attributes;
-    var myAttributes = event.placementInfo.attributes;
-    var serialNumber = event.deviceInfo.deviceId;
-    var batterylife = event.deviceInfo.remainingLife;
-    var date = event.deviceEvent.buttonClicked.reportedTime;
+    const clicktype = event.deviceEvent.buttonClicked.clickType;
+    const attributes = event.deviceInfo.attributes;
+    const myAttributes = event.placementInfo.attributes;
+    const serialNumber = event.deviceInfo.deviceId;
+    const batterylife = event.deviceInfo.remainingLife;
+    const date = event.deviceEvent.buttonClicked.reportedTime;
     if (clicktype === 'SINGLE') {
         s3.putObject(
             {
-            Bucket: 'golf-strokes-recorded',
+            Bucket: 'golf-strokes',
             Key: serialNumber + '/'+ date,
             Body: 'fail',
             ACL: 'public-read',
@@ -38,7 +43,7 @@ exports.handler = (event, context, callback) => {
         })
     } else if (clicktype === 'DOUBLE') {
         s3.listObjects({
-            Bucket: 'golf-strokes-recorded',
+            Bucket: 'golf-strokes',
             Marker: serialNumber + '/'
         }, function(err, data) {
             if (err) {
@@ -48,9 +53,37 @@ exports.handler = (event, context, callback) => {
                     body: err
                 });
             } else {
+                dynamodb.query({
+                    TableName: "score-card",
+                    IndexName: "serialNumber-index",
+                    KeyConditionExpression: '#serialNumber = :ser_id',
+                    ExpressionAttributeNames: {
+                      '#serialNumber': 'serialNumber'
+                    },
+                    ExpressionAttributeValues: {
+                        ':ser_id': { S: serialNumber }
+                      }
+                }, function(err, data) {
+                    if (err) {
+                        console.log(err, err.stack);
+                        callback(null, {
+                            statusCode: '500',
+                            body: err
+                        });
+                    } else {
+                    switch(data.hole-1) {
+                        case 0:
+                          // code block
+                          break;
+                        case 1:
+                          // code block
+                          break;
+                        default:
+                          // code block
+                      }
                 var strokes = Object.keys(data.Contents).length;
                 dynamodb.putItem({
-                    TableName: "score_card",
+                    TableName: "score-card",
                     Item: {
                         "strokes": {
                             S: strokes
@@ -69,7 +102,7 @@ exports.handler = (event, context, callback) => {
                     } else {
                         callback(null, {
                             statusCode: '200',
-                            body: 'Hello ' + serialnumber + '!'
+                            body: 'Hello ' + serialNumber + '!'
                         });
                     }
                 })
@@ -87,7 +120,7 @@ exports.handler = (event, context, callback) => {
              context.succeed(data.Payload)
             }
           });
-    } else if (clicktype === 'LONG') {
+    }}} else if (clicktype === 'LONG') {
         const params3 = {
              Message: `${event.serialNumber} - LONG - processed by Lambda\nBattery voltage: ${event.batteryVoltage}`,
              Subject: `Lambda triggered LONG : ${event.serialNumber}`,
@@ -96,5 +129,4 @@ exports.handler = (event, context, callback) => {
          // result will go to function callback
          SNS.publish(params3, callback);
     }
-}
-;
+};

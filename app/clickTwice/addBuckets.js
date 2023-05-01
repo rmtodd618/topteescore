@@ -10,7 +10,7 @@ exports.handler = (event, context, callback) => {
     var serialNumber = event.deviceInfo.deviceId;
     var date = event.deviceEvent.buttonClicked.reportedTime;
     var params = {
-        Bucket: 'golf-strokes-recorded',
+        Bucket: 'golf-strokes',
         Marker: serialNumber + '/'
     };
 
