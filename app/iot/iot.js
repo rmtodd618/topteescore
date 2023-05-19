@@ -1,11 +1,7 @@
 'use strict';
 
 const AWS = require('aws-sdk');
-AWS.config.update({
-    accessKeyId: 'your_access_key_id',
-    secretAccessKey: 'your_secret_access_key',
-    region: 'your_region'
-});
+
 const SNS = new AWS.SNS();
 const dynamodb = new AWS.DynamoDB();
 const lambda = new AWS.Lambda();
@@ -71,56 +67,57 @@ exports.handler = (event, context, callback) => {
                             body: err
                         });
                     } else {
-                    switch(data.hole-1) {
-                        case 0:
-                          // code block
-                          break;
-                        case 1:
-                          // code block
-                          break;
-                        default:
-                          // code block
-                      }
-                var strokes = Object.keys(data.Contents).length;
-                dynamodb.putItem({
-                    TableName: "score-card",
-                    Item: {
-                        "strokes": {
-                            S: strokes
-                        },
-                        "serialNumber": {
-                            S: serialNumber
+                        switch(data.hole-1) {
+                            case 0:
+                              // code block
+                              break;
+                            case 1:
+                              // code block
+                              break;
+                            default:
+                              // code block
                         }
-                    }
-                }, function(err, data) {
-                    if (err) {
-                        console.log(err, err.stack);
-                        callback(null, {
-                            statusCode: '500',
-                            body: err
+                        var strokes = Object.keys(data.Contents).length;
+                        dynamodb.putItem({
+                            TableName: "score-card",
+                            Item: {
+                                "strokes": {
+                                    S: strokes
+                                },
+                                "serialNumber": {
+                                    S: serialNumber
+                                }
+                            }
+                        }, function(err, data) {
+                            if (err) {
+                                console.log(err, err.stack);
+                                callback(null, {
+                                    statusCode: '500',
+                                    body: err
+                                });
+                            } else {
+                                callback(null, {
+                                    statusCode: '200',
+                                    body: 'Hello ' + serialNumber + '!'
+                                });
+                            }
+                            lambda.invoke({
+                                FunctionName: 'delete_strokes',
+                                Payload: JSON.stringify(serialNumber, null, 2)
+                            }, function(error, data) {
+                                if (error) {
+                                    callback('Error invoking delete_strokes function: ' + error);
+                                }
+                                if(data.Payload){
+                                    context.succeed(data.Payload);
+                                }
+                            });
                         });
-                    } else {
-                        callback(null, {
-                            statusCode: '200',
-                            body: 'Hello ' + serialNumber + '!'
-                        });
                     }
-                })
+                });
             }
-        })
-        lambda.invoke({
-            FunctionName: 'delete_strokes',
-
-            Payload: JSON.stringify(serialNumber, null, 2)
-          }, function(error, data) {
-            if (error) {
-              context.done('error', error);
-            }
-            if(data.Payload){
-             context.succeed(data.Payload)
-            }
-          });
-    }}} else if (clicktype === 'LONG') {
+        });
+    } else if (clicktype === 'LONG') {
         const params3 = {
              Message: `${event.serialNumber} - LONG - processed by Lambda\nBattery voltage: ${event.batteryVoltage}`,
              Subject: `Lambda triggered LONG : ${event.serialNumber}`,

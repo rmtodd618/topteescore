@@ -1,0 +1,112 @@
+service: golf-score-tracker
+custom:
+  siteName: topteescore
+  # s3Sync:
+  #   - bucketName: ${self:custom.siteName}
+  #     localDir: static
+provider:
+  name: aws
+  runtime: nodejs14.x
+  stage: dev
+  region: us-east-1
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:*
+      Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/golfScores"
+functions:
+  registerDevice:
+    handler: handler.registerDevice
+    events:
+      - http:
+          path: register
+          method: post
+  updateScore:
+    handler: handler.updateScore
+    events:
+      - http:
+          path: score
+          method: put
+  getScores:
+    handler: handler.getScores
+    events:
+      - http:
+          path: scores
+          method: get
+          cors: true
+          authorizer: aws_iam
+resources:
+  Resources:
+    golfScoresTable:
+      Type: 'AWS::DynamoDB::Table'
+      Properties:
+        TableName: golfScores
+        AttributeDefinitions:
+          - AttributeName: deviceId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: deviceId
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+    CognitoUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: ${self:custom.siteName}
+        Schema:
+          - Name: email
+            AttributeDataType: String
+            Mutable: true
+            Required: true
+        AutoVerifiedAttributes:
+          - email
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+            RequireUppercase: true
+            RequireLowercase: true
+            RequireNumbers: true
+            RequireSymbols: true
+    CognitoUserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: GolfScoreTrackerUserPoolClient
+        UserPoolId:
+          Ref: CognitoUserPool
+        ExplicitAuthFlows:
+          - ALLOW_USER_SRP_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
+        GenerateSecret: false
+    # Can only run once
+    CognitoUserPoolDomain:
+      Type: AWS::Cognito::UserPoolDomain
+      Properties:
+        UserPoolId:
+          Ref: CognitoUserPool
+        Domain:  ${self:custom.siteName}
+    # StaticSite:
+    #   Type: AWS::S3::Bucket
+    #   Properties:
+    #     BucketName: ${self:custom.siteName}
+    #     WebsiteConfiguration:
+    #       IndexDocument: index.html
+    #   localDir: static
+    # StaticSiteS3BucketPolicy:
+    #   Type: AWS::S3::BucketPolicy
+      # Properties:
+      #   Bucket:
+      #     Ref: StaticSite
+      #   PolicyDocument:
+      #     Version: '2012-10-17'
+      #     Statement:
+      #       - Sid: PublicReadGetObject
+      #         Effect: Allow
+      #         Principal: '*'
+      #         Action:
+      #           - s3:GetObject
+      #         Resource:
+      #           Fn::Sub: "arn:aws:s3:::${StaticSite}/*"
+plugins:
+  - serverless-iam-roles-per-function
+  # - serverless-s3-sync
