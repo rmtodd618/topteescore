@@ -1,24 +1,29 @@
 org: rmtodd618
-service: score # NOTE: update this with your service name
+service: score
 app: strokes
 configValidationMode: error
 provider:
   name: aws
-  runtime: nodejs12.x
+  runtime: nodejs16.x
   memorySize: 512
   region: us-east-1
+  stage: ${opt:stage, 'dev'}
   environment:
-    SCORE_CARD_TABLE: "score-card"
-    STROKES_BUCKET: "golf-strokes"
+    STROKES_BUCKET: "golf-strokes-recorded"
+    iotProject: "Golf_Tracker"
+    DYNAMODBTABLE: "strokes-recorder"
   iamRoleStatements:
+  - Effect: Allow
+    Action:
+      - iot:*
+    Resource: "*"
   - Effect: Allow
     Action:
       - sqs:*
     Resource: arn:aws:sqs:*:*
   - Effect: Allow
     Action:
-      - "s3:ListBucket"
-      - "s3:PutBucket"
+      - s3:*
     Resource: "*"
   - Effect: Allow
     Action:
@@ -28,17 +33,20 @@ provider:
     Resource: "*"
   - Effect: Allow
     Action:
-      - dynamodb:DescribeTable
-      - dynamodb:Query
-      - dynamodb:Scan
-      - dynamodb:GetItem
-      - dynamodb:PutItem
-      - dynamodb:UpdateItem
-      - dynamodb:DeleteItem
-    Resource: arn:aws:dynamodb:*:*
+      - dynamodb:*
+    Resource: "*"
+  - Effect: Allow
+    Action:
+      - sns:*
+    Resource: "*"
+
 resources:
-  Description: "Stroke tracker for stage "
+  Description: "Stroke tracker for stage"
   Resources:
+    SnsTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: sns-topic-name
     LAMBDAFAILURE:
       Type: AWS::SQS::Queue
       Properties:
@@ -48,57 +56,106 @@ resources:
               - "LambdaFailureQueue"
               - "Arn"
           maxReceiveCount: 2
+
     LambdaFailureQueue:
       Type: "AWS::SQS::Queue"
     StrokeRecorderBucket:
-      Type: "AWS::S3::Bucket"
+      Type: AWS::S3::Bucket
       Properties:
-        BucketName: golf-strokes
+        BucketName: ${self:provider.environment.STROKES_BUCKET}
     ScoreCard:
       Type: "AWS::DynamoDB::Table"
       Properties:
         AttributeDefinitions:
-          - AttributeName: "name"
-            AttributeType: "S"
           - AttributeName: "serialNumber"
             AttributeType: "S"
+          - AttributeName: "holeNumber"
+            AttributeType: "N"
         KeySchema:
-          - AttributeName: "name"
+          - AttributeName: "serialNumber"
             KeyType: "HASH"
+          - AttributeName: "holeNumber"
+            KeyType: "RANGE"
         ProvisionedThroughput:
            ReadCapacityUnits: 1
            WriteCapacityUnits: 1
-        TableName: score-card
+        TableName: ${self:provider.environment.DYNAMODBTABLE}
         StreamSpecification:
           StreamViewType: NEW_IMAGE
-        GlobalSecondaryIndexes:
-          - IndexName: "serialnumber-index"
-            KeySchema:
-              - AttributeName: "serialNumber"
-                KeyType: "HASH"
-            Projection:
-              ProjectionType: KEYS_ONLY
-            ProvisionedThroughput:
-              ReadCapacityUnits: 1
-              WriteCapacityUnits: 1
-# you can overwrite defaults here
-
+    DynamoDBAccessRole:
+      Type: "AWS::IAM::Role"
+      Properties:
+        RoleName: DynamoDBAccessRole
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "appsync.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+        Policies:
+        - PolicyName: "DynamoDBAccessPolicy"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: "Allow"
+              Action:
+                - "dynamodb:Query"
+                - "dynamodb:Scan"
+                - "dynamodb:GetItem"
+                - "dynamodb:PutItem"
+                - "dynamodb:UpdateItem"
+                - "dynamodb:DeleteItem"
+              Resource:
+                - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODBTABLE}"
+  Outputs:
+    MySnsTopicArn:
+      Description: "ARN of the SNS topic"
+      Value:
+        Ref: SnsTopic
+      Export:
+        Name: ${self:service}-${self:provider.stage}-MySnsTopicArn
 functions:
   Iot:
     handler: app/iot/iot.handler
     description: Handles the clicks fo the button
-    onError: {
-          "Fn::GetAtt": ["LambdaFailureQueue", "Arn"]
-        }
     timeout: 60
-    # events:
-    #   - iot:
-    #       sql: "SELECT * FROM '${file(.local-keys.yaml):AWS_IOT_BUTTON_TOPIC}'"
-    #       enabled: true
+    environment:
+      MY_SNS_TOPIC_ARN: "arn:aws:sns:us-east-1:776684093134:sns-topic-name" # Replace with your ARN
+    onError: {
+      "Fn::GetAtt": ["LambdaFailureQueue", "Arn"]
+    }
+    events:
+      - iot:
+          sql: "SELECT * FROM 'iotbutton/+'"
+          enabled: true
+    tracing: true
+
+  getStrokes:
+    handler: src/getStrokes.handler
+    events:
+      - http:
+          path: /getStrokes
+          method: get
+  graphql:
+    handler: handler.graphqlHandler
+    events:
+    - http:
+        path: graphql
+        method: post
+        cors: true
+    - http:
+        path: graphql
+        method: get
+        cors: true
 
 plugins:
   - serverless-s3-remover
+
 custom:
   remover:
-     buckets:
-      -StrokeRecorderBucket
+    prompt: true
+    buckets:
+      - ${self:provider.environment.STROKES_BUCKET}
